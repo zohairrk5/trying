@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Credit Agreement Extractor</title>
+<style>
+  :root {
+    --bg: #0e1116;
+    --panel: #161b22;
+    --panel-2: #1c232c;
+    --border: #2a323d;
+    --text: #e6edf3;
+    --muted: #8b98a5;
+    --accent: #6aa9ff;
+    --green: #3fb950;
+    --green-bg: #12261a;
+    --amber: #d29922;
+    --amber-bg: #2a2113;
+    --red: #f85149;
+    --red-bg: #2b1517;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    padding: 32px 20px 80px;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); margin: 0 0 28px; font-size: 14px; }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+    margin-bottom: 20px;
+  }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  label.file {
+    display: inline-flex; align-items: center; gap: 8px;
+    border: 1px dashed var(--border); border-radius: 8px;
+    padding: 10px 14px; cursor: pointer; color: var(--muted);
+    transition: border-color .15s, color .15s;
+  }
+  label.file:hover { border-color: var(--accent); color: var(--text); }
+  input[type=file] { display: none; }
+  select, button {
+    font: inherit; color: var(--text);
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 9px 13px;
+  }
+  select { min-width: 260px; }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); color: #08101d; border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .hint { color: var(--muted); font-size: 13px; margin-top: 10px; }
+
+  .summary {
+    font-family: var(--mono); font-size: 13px; color: var(--muted);
+    padding: 12px 14px; background: var(--panel-2);
+    border: 1px solid var(--border); border-radius: 8px; margin-bottom: 18px;
+  }
+  .summary b { color: var(--text); }
+
+  h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--muted); margin: 26px 0 10px; font-weight: 600;
+  }
+
+  .field {
+    border: 1px solid var(--border); border-radius: 9px;
+    padding: 14px 16px; margin-bottom: 10px; background: var(--panel);
+  }
+  .field.flagged { border-color: #4a3a12; background: #191713; }
+  .field-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .field-name { color: var(--muted); font-size: 13px; min-width: 210px; }
+  .field-value { font-weight: 700; font-family: var(--mono); font-size: 14px; flex: 1; word-break: break-word; }
+  .field-value.null { color: var(--muted); font-weight: 400; font-style: italic; }
+
+  .pill {
+    font-family: var(--mono); font-size: 11px; font-weight: 700;
+    padding: 3px 8px; border-radius: 20px; white-space: nowrap;
+  }
+  .pill.high { color: var(--green); background: var(--green-bg); border: 1px solid #1d4527; }
+  .pill.med  { color: var(--amber); background: var(--amber-bg); border: 1px solid #4a3a12; }
+  .pill.low  { color: var(--red);   background: var(--red-bg);   border: 1px solid #4d2224; }
+
+  .badge {
+    font-size: 11px; font-weight: 600; color: var(--amber);
+    background: var(--amber-bg); border: 1px solid #4a3a12;
+    padding: 3px 8px; border-radius: 5px; white-space: nowrap;
+  }
+
+  .quote {
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+    margin-top: 10px; padding: 9px 12px;
+    border-left: 2px solid var(--border); background: #11161d;
+    border-radius: 0 6px 6px 0; white-space: pre-wrap; word-break: break-word;
+  }
+  .quote .loc { display: block; margin-top: 6px; color: #6b7683; font-size: 11px; }
+  .quote.empty { color: #6b7683; font-style: italic; }
+
+  .review { margin-top: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .review button { font-size: 12px; padding: 5px 10px; }
+  .review input {
+    font: inherit; font-size: 13px; font-family: var(--mono);
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px; min-width: 260px;
+  }
+  .resolved {
+    margin-top: 10px; font-size: 12px; color: var(--green);
+    background: var(--green-bg); border: 1px solid #1d4527;
+    border-radius: 6px; padding: 8px 11px;
+  }
+  .resolved .note { display: block; color: var(--muted); margin-top: 4px; font-size: 11px; }
+
+  .error {
+    border: 1px solid #4d2224; background: var(--red-bg);
+    color: #ffb4b0; border-radius: 9px; padding: 14px 16px; font-size: 14px;
+  }
+  .spinner {
+    display: inline-block; width: 13px; height: 13px; margin-right: 9px;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin .7s linear infinite; vertical-align: -2px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  details.raw { margin-top: 26px; }
+  details.raw summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  details.raw pre {
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px; overflow-x: auto; margin-top: 10px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Credit Agreement Extractor</h1>
+  <p class="sub">Extract terms &amp; covenants, with confidence scoring and source citations.</p>
+
+  <div class="card">
+    <div class="row">
+      <label class="file">
+        <span>Upload a credit agreement PDF</span>
+        <input type="file" id="file" accept="application/pdf" />
+      </label>
+      <span style="color:var(--muted);font-size:13px">or</span>
+      <select id="sample"><option value="">Loading samples…</option></select>
+      <button class="primary" id="run">Extract</button>
+    </div>
+    <div class="hint" id="hint">Text-based PDFs only — scanned documents need OCR, which is out of scope here.</div>
+  </div>
+
+  <div id="out"></div>
+</div>
+
+<script>
+const CORE_TERMS = [
+  'Borrower',
+  'Lender / Administrative Agent',
+  'Facility type',
+  'Principal / commitment amount',
+  'Currency',
+  'Maturity date',
+  'Interest rate / margin',
+];
+const THRESHOLD = 0.8;
+
+const $file = document.getElementById('file');
+const $sample = document.getElementById('sample');
+const $run = document.getElementById('run');
+const $hint = document.getElementById('hint');
+const $out = document.getElementById('out');
+
+let lastResult = null;
+
+fetch('/api/samples')
+  .then(r => r.json())
+  .then(d => {
+    const opts = ['<option value="">— pick a bundled sample —</option>']
+      .concat((d.samples || []).map(s => `<option value="${s.id}">${esc(s.label)}</option>`));
+    $sample.innerHTML = opts.join('');
+  })
+  .catch(() => { $sample.innerHTML = '<option value="">(samples unavailable)</option>'; });
+
+$file.addEventListener('change', () => {
+  if ($file.files[0]) {
+    $sample.value = '';
+    $hint.textContent = 'Selected: ' + $file.files[0].name;
+  }
+});
+$sample.addEventListener('change', () => { if ($sample.value) $file.value = ''; });
+
+$run.addEventListener('click', run);
+
+async function run() {
+  const file = $file.files[0];
+  const sample = $sample.value;
+  if (!file && !sample) {
+    $out.innerHTML = '<div class="error">Pick a PDF to upload or choose a bundled sample first.</div>';
+    return;
+  }
+
+  $run.disabled = true;
+  $out.innerHTML = '<div class="summary"><span class="spinner"></span>Extracting… parsing the PDF and asking the model for terms, covenants, confidence and citations. Large agreements take 30–60s.</div>';
+
+  try {
+    let res;
+    if (file) {
+      const fd = new FormData();
+      fd.append('file', file);
+      res = await fetch('/api/extract', { method: 'POST', body: fd });
+    } else {
+      res = await fetch('/api/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sample }),
+      });
+    }
+
+    const data = await res.json();
+    if (!res.ok) {
+      $out.innerHTML = `<div class="error"><b>${esc(data.error || 'Extraction failed.')}</b>${
+        data.detail ? `<div style="margin-top:8px;font-size:13px;opacity:.85">${esc(data.detail)}</div>` : ''
+      }</div>`;
+      return;
+    }
+    lastResult = data;
+    render(data);
+  } catch (err) {
+    $out.innerHTML = `<div class="error">Could not reach the server: ${esc(err.message)}</div>`;
+  } finally {
+    $run.disabled = false;
+  }
+}
+
+function render(data) {
+  const fields = data.fields || [];
+  const flagged = fields.filter(f => f.confidence < THRESHOLD).length;
+  const high = fields.length - flagged;
+
+  const core = fields.filter(f => CORE_TERMS.includes(f.field));
+  const covenants = fields.filter(f => !CORE_TERMS.includes(f.field));
+  const m = data.meta || {};
+
+  const coverage = m.truncated
+    ? `analyzed ${fmt(m.analyzedChars)} of ${fmt(m.documentChars)} chars (targeted excerpt)`
+    : `analyzed full text, ${fmt(m.documentChars)} chars`;
+
+  $out.innerHTML = `
+    <div class="summary">
+      Extracted <b>${fields.length}</b> fields ·
+      <b>${high}</b> high-confidence ·
+      <b>${flagged}</b> flagged for review
+      <div style="margin-top:6px;color:#6b7683">
+        ${esc(data.documentName || '')} — ${m.pages || '?'} pages, ${coverage} · ${esc(m.model || '')}
+      </div>
+    </div>
+    ${section('Core Terms', core)}
+    ${section('Financial Covenants', covenants)}
+    <details class="raw">
+      <summary>Show raw JSON response</summary>
+      <pre>${esc(JSON.stringify(data, null, 2))}</pre>
+    </details>
+  `;
+
+  $out.querySelectorAll('[data-act]').forEach(btn => {
+    btn.addEventListener('click', () => handleReview(btn));
+  });
+}
+
+function section(title, fields) {
+  if (!fields.length) return `<h2>${title}</h2><div class="field"><span style="color:var(--muted)">None found.</span></div>`;
+  return `<h2>${title}</h2>` + fields.map(fieldCard).join('');
+}
+
+function fieldCard(f, i) {
+  const flagged = f.confidence < THRESHOLD;
+  const cls = f.confidence >= 0.8 ? 'high' : f.confidence >= 0.5 ? 'med' : 'low';
+  const id = 'f' + Math.random().toString(36).slice(2, 9);
+  const hasValue = f.value !== null && f.value !== undefined && f.value !== '';
+
+  return `
+    <div class="field ${flagged ? 'flagged' : ''}" id="${id}">
+      <div class="field-head">
+        <span class="field-name">${esc(f.field)}</span>
+        <span class="field-value ${hasValue ? '' : 'null'}">${hasValue ? esc(String(f.value)) : 'not found'}</span>
+        <span class="pill ${cls}">${f.confidence.toFixed(2)}</span>
+        ${flagged ? '<span class="badge">⚠ Needs human review</span>' : ''}
+      </div>
+      ${
+        f.source_quote
+          ? `<div class="quote">“${esc(f.source_quote)}”${f.source_location ? `<span class="loc">${esc(f.source_location)}</span>` : ''}</div>`
+          : '<div class="quote empty">No supporting quote returned — treat this value as unverified.</div>'
+      }
+      ${
+        flagged
+          ? `<div class="review" data-review>
+               <button data-act="confirm" data-target="${id}">✓ Confirm</button>
+               <button data-act="correct" data-target="${id}">✎ Correct</button>
+             </div>`
+          : ''
+      }
+    </div>`;
+}
+
+function handleReview(btn) {
+  const card = document.getElementById(btn.dataset.target);
+  const bar = card.querySelector('[data-review]');
+  const fieldName = card.querySelector('.field-name').textContent;
+
+  if (btn.dataset.act === 'confirm') {
+    bar.outerHTML = `<div class="resolved">✓ Confirmed by reviewer.
+      <span class="note">In a production system this confirmation is written back as a labelled training example for "${esc(fieldName)}".</span></div>`;
+    return;
+  }
+
+  const current = card.querySelector('.field-value').textContent;
+  bar.innerHTML = `
+    <input type="text" value="${esc(current === 'not found' ? '' : current)}" placeholder="Corrected value" />
+    <button data-save>Save</button>`;
+  const input = bar.querySelector('input');
+  input.focus();
+  bar.querySelector('[data-save]').addEventListener('click', () => {
+    const val = input.value.trim();
+    const target = card.querySelector('.field-value');
+    target.textContent = val || 'not found';
+    target.classList.toggle('null', !val);
+    card.querySelector('.pill').outerHTML = '<span class="pill high">human</span>';
+    card.querySelector('.badge')?.remove();
+    card.classList.remove('flagged');
+    bar.outerHTML = `<div class="resolved">✎ Corrected by reviewer.
+      <span class="note">In a production system this correction becomes labelled training data for "${esc(fieldName)}".</span></div>`;
+  });
+}
+
+function fmt(n) { return typeof n === 'number' ? n.toLocaleString('en-US') : '?'; }
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+</script>
+</body>
+</html>
