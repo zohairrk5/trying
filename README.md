@@ -67,13 +67,20 @@ Because every window is a contiguous slice of the original text, `source_quote` 
 
 In production you would replace this with proper chunking plus retrieval, or just send the full document and eat the cost.
 
+### Citations are verified, not trusted
+
+The prompt asks for verbatim quotes; `verifyQuotes()` checks it actually got them. Every non-empty `source_quote` must be found in the extracted document text, compared after normalizing whitespace and folding smart quotes and dashes to ASCII — PDF text and model output disagree on punctuation shape far more often than on words.
+
+A quote that cannot be located is treated as a fabricated citation: the field's confidence is capped at 0.3, the row is flagged for review regardless of what the model claimed, and the UI shows the original self-reported score next to the capped one. The response carries `quote_verified` (`true` / `false` / `null` when no quote was offered) per field, and the summary line reports the verified ratio.
+
+This matters because the model's confidence score is self-reported and the citation is the only part of the output that can be independently checked against ground truth.
+
 ## Known limitations
 
 This is a POC, and deliberately so:
 
 - **The excerpt can miss things.** A covenant expressed in unusual language, or buried in a schedule past the window budget, will not reach the model. The reported coverage numbers make this visible but do not fix it.
-- **Confidence is self-reported.** The model's own estimate, not a calibrated probability. It is useful for triage and routing, not for anything load-bearing.
-- **Quotes are not verified against the source.** The prompt requires verbatim spans, but nothing checks the returned quote actually appears in the document. That check is a genuinely easy addition (`text.includes(quote)`) and would be the first thing to add.
+- **Confidence is self-reported.** The model's own estimate, not a calibrated probability. It is useful for triage and routing, not for anything load-bearing. The one thing that *is* independently checked is the citation (below).
 - **Corrections are not persisted.** Confirm/Correct updates the view only; the training-data note describes what a real system would do with the feedback.
 - No auth, no database, no tests, no deployment config, no OCR.
 

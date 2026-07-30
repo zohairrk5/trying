@@ -169,6 +169,43 @@ function normalizeFields(data) {
     }));
 }
 
+/**
+ * PDF text and model output disagree on whitespace and punctuation shape far
+ * more often than on words, so compare on a normalized form: collapse runs of
+ * whitespace and fold smart quotes / dashes back to ASCII.
+ */
+function normalizeForMatch(s) {
+  return s
+    .replace(/[‘’‚‛′]/g, "'")
+    .replace(/[“”„‟″]/g, '"')
+    .replace(/[‐-―−]/g, '-')
+    .replace(/ /g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * The prompt asks for verbatim quotes. This checks that we actually got them:
+ * every non-empty source_quote must appear in the document text. A quote the
+ * model invented is the failure mode that matters most here, because the whole
+ * traceability claim rests on the citation being real.
+ */
+function verifyQuotes(fields, documentText) {
+  const haystack = normalizeForMatch(documentText);
+  return fields.map((f) => {
+    if (!f.source_quote) return { ...f, quote_verified: null };
+    const needle = normalizeForMatch(f.source_quote);
+    const verified = needle.length > 0 && haystack.includes(needle);
+    return {
+      ...f,
+      quote_verified: verified,
+      // An unverifiable citation is not worth the confidence the model gave it.
+      confidence: verified ? f.confidence : Math.min(f.confidence, 0.3),
+      model_confidence: f.confidence,
+    };
+  });
+}
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -242,10 +279,13 @@ app.post('/api/extract', upload.single('file'), async (req, res) => {
       });
     }
 
-    const fields = normalizeFields(parsed.data);
-    if (!fields) {
+    const rawFields = normalizeFields(parsed.data);
+    if (!rawFields) {
       return res.status(502).json({ error: 'The model returned JSON without a "fields" array.' });
     }
+
+    const fields = verifyQuotes(rawFields, text);
+    const quoted = fields.filter((f) => f.quote_verified !== null);
 
     res.json({
       documentName,
@@ -255,6 +295,8 @@ app.post('/api/extract', upload.single('file'), async (req, res) => {
         documentChars: text.length,
         analyzedChars: excerpt.length,
         truncated,
+        quotesChecked: quoted.length,
+        quotesVerified: quoted.filter((f) => f.quote_verified).length,
         model: response.model,
         effort: EFFORT,
         usage: response.usage,

@@ -103,6 +103,9 @@
     border-radius: 0 6px 6px 0; white-space: pre-wrap; word-break: break-word;
   }
   .quote .loc { display: block; margin-top: 6px; color: #6b7683; font-size: 11px; }
+  .vtag { font-weight: 600; margin-left: 6px; }
+  .vtag.ok { color: var(--green); }
+  .vtag.bad { color: var(--red); }
   .quote.empty { color: #6b7683; font-style: italic; }
 
   .review { margin-top: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -240,9 +243,15 @@ async function run() {
   }
 }
 
+// A row needs a human if the model was unsure OR if its citation could not be
+// found in the source document.
+function needsReview(f) {
+  return f.confidence < THRESHOLD || f.quote_verified === false;
+}
+
 function render(data) {
   const fields = data.fields || [];
-  const flagged = fields.filter(f => f.confidence < THRESHOLD).length;
+  const flagged = fields.filter(needsReview).length;
   const high = fields.length - flagged;
 
   const core = fields.filter(f => CORE_TERMS.includes(f.field));
@@ -257,7 +266,8 @@ function render(data) {
     <div class="summary">
       Extracted <b>${fields.length}</b> fields ·
       <b>${high}</b> high-confidence ·
-      <b>${flagged}</b> flagged for review
+      <b>${flagged}</b> flagged for review ·
+      <b>${m.quotesVerified}/${m.quotesChecked}</b> citations verified against source
       <div style="margin-top:6px;color:#6b7683">
         ${esc(data.documentName || '')} — ${m.pages || '?'} pages, ${coverage} · ${esc(m.model || '')}
       </div>
@@ -280,11 +290,19 @@ function section(title, fields) {
   return `<h2>${title}</h2>` + fields.map(fieldCard).join('');
 }
 
-function fieldCard(f, i) {
-  const flagged = f.confidence < THRESHOLD;
+function fieldCard(f) {
+  const flagged = needsReview(f);
   const cls = f.confidence >= 0.8 ? 'high' : f.confidence >= 0.5 ? 'med' : 'low';
   const id = 'f' + Math.random().toString(36).slice(2, 9);
   const hasValue = f.value !== null && f.value !== undefined && f.value !== '';
+  const downgraded = f.quote_verified === false && f.model_confidence > f.confidence;
+
+  const verifyTag =
+    f.quote_verified === true
+      ? '<span class="vtag ok">✓ found in source</span>'
+      : f.quote_verified === false
+        ? '<span class="vtag bad">✗ not found in source document</span>'
+        : '';
 
   return `
     <div class="field ${flagged ? 'flagged' : ''}" id="${id}">
@@ -292,11 +310,12 @@ function fieldCard(f, i) {
         <span class="field-name">${esc(f.field)}</span>
         <span class="field-value ${hasValue ? '' : 'null'}">${hasValue ? esc(String(f.value)) : 'not found'}</span>
         <span class="pill ${cls}">${f.confidence.toFixed(2)}</span>
+        ${downgraded ? `<span class="pill low" title="Model self-reported ${f.model_confidence.toFixed(2)}; capped because its citation could not be verified">was ${f.model_confidence.toFixed(2)}</span>` : ''}
         ${flagged ? '<span class="badge">⚠ Needs human review</span>' : ''}
       </div>
       ${
         f.source_quote
-          ? `<div class="quote">“${esc(f.source_quote)}”${f.source_location ? `<span class="loc">${esc(f.source_location)}</span>` : ''}</div>`
+          ? `<div class="quote">“${esc(f.source_quote)}”<span class="loc">${esc(f.source_location || '')} ${verifyTag}</span></div>`
           : '<div class="quote empty">No supporting quote returned — treat this value as unverified.</div>'
       }
       ${
